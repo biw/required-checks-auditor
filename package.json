@@ -1,0 +1,60 @@
+{
+  "name": "required-checks-auditor",
+  "version": "1.0.0",
+  "description": "Audit GitHub PR workflows and fail when their checks are missing from branch rules.",
+  "keywords": [
+    "branch-protection",
+    "ci",
+    "github-action",
+    "github-actions",
+    "github-rulesets",
+    "pull-request",
+    "required-checks",
+    "status-checks"
+  ],
+  "author": "Ben Williams",
+  "license": "MIT",
+  "homepage": "https://github.com/biw/required-checks-auditor#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/biw/required-checks-auditor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/biw/required-checks-auditor/issues"
+  },
+  "type": "module",
+  "bin": {
+    "require-checks-auditor": "dist/cli.js"
+  },
+  "files": [
+    "dist/cli.js",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "check": "tsc --noEmit",
+    "precommit": "pnpm check && pnpm test && pnpm build",
+    "prepublishOnly": "pnpm precommit",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.17.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@actions/core": "3.0.1",
+    "@actions/github": "9.1.1",
+    "@inquirer/prompts": "8.5.2",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "tsdown": "0.22.14",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

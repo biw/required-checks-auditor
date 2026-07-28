@@ -1,0 +1,45 @@
+name: Required Checks Auditor
+description: Fails when PR-relevant workflow checks are absent from the target branch's active rules.
+author: biw
+
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  github-token:
+    description: Token used to read workflows, observed external checks, and the target branch's effective rules.
+    required: false
+    default: ${{ github.token }}
+  target-branch:
+    description: Branch whose effective rules are audited. Defaults to the pull request base branch, then main.
+    required: false
+  workflow-ref:
+    description: Git ref containing the workflow definitions to audit. Defaults to the current workflow's commit.
+    required: false
+    default: ${{ github.sha }}
+  wait-seconds:
+    description: Non-negative whole seconds to wait before auditing. This gives late-starting checks time to appear.
+    required: false
+    default: '30'
+  excluded-workflow-paths:
+    description: Comma- or newline-separated workflow paths to exclude from discovery.
+    required: false
+    default: ''
+  ignored-checks:
+    description: Comma- or newline-separated discovered check names to ignore.
+    required: false
+    default: ''
+outputs:
+  expected-checks:
+    description: JSON array of checks the action expected the target branch to require.
+  missing-checks:
+    description: JSON array of expected checks that are absent from the target branch's active rules.
+  observed-checks:
+    description: JSON array of non-GitHub-Actions checks observed on the current commit.
+  target-branch:
+    description: Target branch whose effective rules were audited.
+
+runs:
+  using: node24
+  main: dist/index.js
