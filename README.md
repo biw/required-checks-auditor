@@ -1,5 +1,10 @@
 # Required Checks Auditor
 
+[![CI](https://badgen.net/github/checks/biw/required-checks-auditor)](https://github.com/biw/required-checks-auditor/actions)
+[![npm version](https://badgen.net/npm/v/required-checks-auditor)](https://www.npmjs.com/package/required-checks-auditor)
+[![npm downloads](https://badgen.net/npm/dt/required-checks-auditor)](https://www.npmjs.com/package/required-checks-auditor)
+
+
 Catch GitHub pull-request checks that run but are not required by your branch rules.
 
 ## Installation
