@@ -12,7 +12,7 @@ Catch GitHub pull-request checks that run but are not required by your branch ru
 Run the following command from the repository you want to protect. It finds your PR workflows, asks which ones to watch, then writes `.github/workflows/required-checks-auditor.yml`.
 
 ```sh
-npx require-checks-auditor
+npx -y required-checks-auditor@latest
 ```
 
 <details>

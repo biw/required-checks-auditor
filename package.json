@@ -1,6 +1,6 @@
 {
   "name": "required-checks-auditor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Audit GitHub PR workflows and fail when their checks are missing from branch rules.",
   "keywords": [
     "branch-protection",
@@ -24,7 +24,7 @@
   },
   "type": "module",
   "bin": {
-    "require-checks-auditor": "dist/cli.js"
+    "required-checks-auditor": "dist/cli.js"
   },
   "files": [
     "dist/cli.js",
