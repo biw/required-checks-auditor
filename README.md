@@ -40,8 +40,9 @@ jobs:
     name: Required checks auditor
     runs-on: ubuntu-latest
     steps:
-      - uses: biw/required-checks-auditor@v1.0.0
+      - uses: biw/required-checks-auditor@v1.0.2
         with:
+          target-branch: main
           wait-seconds: 30
           excluded-workflow-paths: |
             .github/workflows/release-build.yml
@@ -62,11 +63,15 @@ and the effective branch rules.
 ### Options
 
 - `wait-seconds`: seconds to wait before auditing; defaults to `30`. Set `0` to run immediately.
+- `target-branch`: protected branch whose active rules are audited. It defaults to the pull request's
+  base branch; set it explicitly when the workflow can run on stacked pull requests.
 - `excluded-workflow-paths`: workflow files to leave out of automatic discovery.
 - `ignored-checks`: specific check names to leave out intentionally.
 
-The target branch and workflow revision default to the current pull request. The action includes
-terminal GitHub Actions jobs and externally reported checks it observes on the pull request.
+The generated workflow always sets `target-branch` to the branch selected during setup, so stacked
+pull requests are checked against the protected branch rather than an intermediate stack branch.
+The workflow revision defaults to the current workflow commit. The action includes terminal GitHub
+Actions jobs and externally reported checks it observes on the pull request.
 
 ## License
 

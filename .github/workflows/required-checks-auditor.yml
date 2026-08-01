@@ -18,6 +18,7 @@ jobs:
     name: Required checks auditor
     runs-on: ubuntu-latest
     steps:
-      - uses: biw/required-checks-auditor@v1.0.0
+      - uses: actions/checkout@v4
+      - uses: ./
         with:
           wait-seconds: 30

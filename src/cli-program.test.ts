@@ -59,7 +59,14 @@ describe('createAuditWorkflow', () => {
         targetBranch: 'trunk',
         waitSeconds: 45,
       }),
-    ).toContain(`with:\n          wait-seconds: 45`)
+    ).toContain(`with:\n          target-branch: trunk\n          wait-seconds: 45`)
+    expect(
+      createAuditWorkflow({
+        excludedWorkflowPaths: [],
+        targetBranch: 'trunk',
+        waitSeconds: 45,
+      }),
+    ).toContain('uses: biw/required-checks-auditor@v1.0.2')
   })
 })
 
@@ -113,6 +120,9 @@ describe('runCli', () => {
     )
     await expect(readFile(join(cwd, '.github', 'workflows', 'required-checks-auditor.yml'), 'utf8')).resolves.toContain(
       'wait-seconds: 45',
+    )
+    await expect(readFile(join(cwd, '.github', 'workflows', 'required-checks-auditor.yml'), 'utf8')).resolves.toContain(
+      'target-branch: main',
     )
   })
 
