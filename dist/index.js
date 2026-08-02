@@ -8,6 +8,8 @@ import * as path from "path";
 import * as events from "events";
 import "child_process";
 import "timers";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 //#region \0rolldown/runtime.js
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -15973,7 +15975,7 @@ var __awaiter$7 = function(thisArg, _arguments, P, generator) {
 		step((generator = generator.apply(thisArg, _arguments || [])).next());
 	});
 };
-const { access, appendFile, writeFile } = promises;
+const { access, appendFile, writeFile: writeFile$1 } = promises;
 const SUMMARY_ENV_VAR = "GITHUB_STEP_SUMMARY";
 var Summary = class {
 	constructor() {
@@ -16024,7 +16026,7 @@ var Summary = class {
 		return __awaiter$7(this, void 0, void 0, function* () {
 			const overwrite = !!(options === null || options === void 0 ? void 0 : options.overwrite);
 			const filePath = yield this.filePath();
-			yield (overwrite ? writeFile : appendFile)(filePath, this._buffer, { encoding: "utf8" });
+			yield (overwrite ? writeFile$1 : appendFile)(filePath, this._buffer, { encoding: "utf8" });
 			return this.emptyBuffer();
 		});
 	}
@@ -26632,7 +26634,7 @@ const requiredContextsFromRule = (rule) => {
 	if (!Array.isArray(requiredStatusChecks)) return [];
 	return requiredStatusChecks.flatMap((check) => isRecord(check) && typeof check.context === "string" ? [check.context] : []);
 };
-const getRequiredCheckContexts = async ({ branch, octokit, owner, repo }) => {
+const getBranchRuleState = async ({ branch, octokit, owner, repo }) => {
 	const paginateRules = octokit.paginate;
 	const rules = await paginateRules("GET /repos/{owner}/{repo}/rules/branches/{branch}", {
 		branch,
@@ -26640,7 +26642,10 @@ const getRequiredCheckContexts = async ({ branch, octokit, owner, repo }) => {
 		owner,
 		repo
 	});
-	return new Set(rules.flatMap(requiredContextsFromRule));
+	return {
+		hasAppliedRuleset: rules.some((rule) => isRecord(rule) && typeof rule.ruleset_id === "number"),
+		requiredChecks: new Set(rules.flatMap(requiredContextsFromRule))
+	};
 };
 const getObservedExternalCheckContexts = async ({ octokit, owner, ref, repo }) => {
 	const [checkRuns, statuses] = await Promise.all([octokit.paginate(octokit.rest.checks.listForRef, {
@@ -26666,6 +26671,25 @@ const observedCheckRefs = ({ eventName, payload, workflowSha }) => {
 	return [...refs];
 };
 //#endregion
+//#region src/ruleset.ts
+const createRulesetImport = ({ checks, targetBranch }) => `${JSON.stringify({
+	conditions: { ref_name: {
+		exclude: [],
+		include: [`refs/heads/${targetBranch}`]
+	} },
+	enforcement: "active",
+	name: `Required PR checks for ${targetBranch}`,
+	rules: [{
+		parameters: {
+			do_not_enforce_on_create: true,
+			required_status_checks: checks.map((context) => ({ context })),
+			strict_required_status_checks_policy: false
+		},
+		type: "required_status_checks"
+	}],
+	target: "branch"
+}, null, 2)}\n`;
+//#endregion
 //#region src/wait.ts
 const parseWaitSeconds = (value) => {
 	const trimmedValue = value.trim();
@@ -26682,7 +26706,7 @@ const waitForSeconds = async (seconds) => {
 };
 //#endregion
 //#region src/index.ts
-const addSummary = async ({ checks, missing, observedChecks, targetBranch, workflows }) => {
+const addSummary = async ({ checks, missing, observedChecks, targetHasRuleset, targetBranch, workflows }) => {
 	const rows = [[{
 		data: "Check",
 		header: true
@@ -26690,7 +26714,7 @@ const addSummary = async ({ checks, missing, observedChecks, targetBranch, workf
 		data: "Required by active rules",
 		header: true
 	}], ...checks.map((check) => [check, missing.includes(check) ? "No" : "Yes"])];
-	await summary.addHeading(`Required checks audit for ${targetBranch}`).addTable(rows).addHeading("Discovered workflows", 2).addList(workflows).addHeading("Observed external checks", 2).addList(observedChecks.length === 0 ? ["None"] : observedChecks).write();
+	await summary.addHeading(`Required checks audit for ${targetBranch}`).addTable(rows).addHeading("Ruleset", 2).addList([targetHasRuleset ? "An active ruleset applies to this branch." : "No active ruleset applies to this branch."]).addHeading("Discovered workflows", 2).addList(workflows).addHeading("Observed external checks", 2).addList(observedChecks.length === 0 ? ["None"] : observedChecks).write();
 };
 const run = async () => {
 	const waitSeconds = parseWaitSeconds(getInput("wait-seconds") || "30");
@@ -26741,25 +26765,36 @@ const run = async () => {
 	const includedObservedChecks = [...observedChecks].filter((check) => !ignoredChecks.includes(check)).sort();
 	const expectedChecks = [.../* @__PURE__ */ new Set([...discovered.checks, ...includedObservedChecks])].sort();
 	if (expectedChecks.length === 0) throw new Error("No PR-relevant workflow checks were discovered.");
-	const requiredChecks = await getRequiredCheckContexts({
+	const { hasAppliedRuleset, requiredChecks } = await getBranchRuleState({
 		branch: targetBranch,
 		octokit,
 		owner,
 		repo
 	});
 	const missingChecks = expectedChecks.filter((check) => !requiredChecks.has(check));
+	const rulesetArtifactPath = missingChecks.length > 0 && !hasAppliedRuleset ? join(process.env.RUNNER_TEMP ?? process.cwd(), "required-checks-ruleset.json") : "";
+	if (rulesetArtifactPath.length > 0) await writeFile(rulesetArtifactPath, createRulesetImport({
+		checks: expectedChecks,
+		targetBranch
+	}), "utf8");
 	setOutput("expected-checks", JSON.stringify(expectedChecks));
 	setOutput("missing-checks", JSON.stringify(missingChecks));
 	setOutput("observed-checks", JSON.stringify(includedObservedChecks));
+	setOutput("ruleset-artifact-path", rulesetArtifactPath);
 	setOutput("target-branch", targetBranch);
+	setOutput("target-has-ruleset", String(hasAppliedRuleset));
 	await addSummary({
 		checks: expectedChecks,
 		missing: missingChecks,
 		observedChecks: includedObservedChecks,
+		targetHasRuleset: hasAppliedRuleset,
 		targetBranch,
 		workflows: discovered.workflows
 	});
-	if (missingChecks.length > 0) setFailed(`The ${targetBranch} rules are missing required checks:\n${missingChecks.map((check) => `- ${check}`).join("\n")}`);
+	if (missingChecks.length > 0) {
+		const artifactInstructions = rulesetArtifactPath.length > 0 ? "\n\nNo active ruleset applies to this branch. Download the “required-checks-ruleset” artifact and import it in Settings → Rules → Rulesets." : "";
+		setFailed(`The ${targetBranch} rules are missing required checks:\n${missingChecks.map((check) => `- ${check}`).join("\n")}${artifactInstructions}`);
+	}
 };
 run().catch((error) => {
 	setFailed(error instanceof Error ? error.message : String(error));

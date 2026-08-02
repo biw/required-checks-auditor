@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  getBranchRuleState,
   getObservedExternalCheckContexts,
   getRequiredCheckContexts,
   getWorkflowFiles,
@@ -85,6 +86,42 @@ describe('getRequiredCheckContexts', () => {
     })
 
     expect([...contexts].sort()).toEqual(['browser-performance', 'lint', 'test'])
+  })
+})
+
+describe('getBranchRuleState', () => {
+  it('reports whether any ruleset applies to the target branch', async () => {
+    const octokit = {
+      paginate: async () => [
+        { ruleset_id: 1, type: 'deletion' },
+        {
+          parameters: { required_status_checks: [{ context: 'test' }] },
+          ruleset_id: 2,
+          type: 'required_status_checks',
+        },
+      ],
+      rest: { repos: { getContent: async () => ({ data: [] }) } },
+    } as unknown as GitHubClient
+
+    await expect(
+      getBranchRuleState({ branch: 'main', octokit, owner: 'biw', repo: 'example' }),
+    ).resolves.toEqual({ hasAppliedRuleset: true, requiredChecks: new Set(['test']) })
+  })
+
+  it('does not treat legacy branch protection as a ruleset', async () => {
+    const octokit = {
+      paginate: async () => [
+        {
+          parameters: { required_status_checks: [{ context: 'test' }] },
+          type: 'required_status_checks',
+        },
+      ],
+      rest: { repos: { getContent: async () => ({ data: [] }) } },
+    } as unknown as GitHubClient
+
+    await expect(
+      getBranchRuleState({ branch: 'main', octokit, owner: 'biw', repo: 'example' }),
+    ).resolves.toEqual({ hasAppliedRuleset: false, requiredChecks: new Set(['test']) })
   })
 })
 
