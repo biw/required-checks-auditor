@@ -59,7 +59,23 @@ describe('createAuditWorkflow', () => {
         targetBranch: 'trunk',
         waitSeconds: 45,
       }),
-    ).toContain(`with:\n          wait-seconds: 45`)
+    ).toContain(`id: audit\n        uses: biw/required-checks-auditor@v1.0.2\n        with:\n          target-branch: trunk\n          wait-seconds: 45`)
+    expect(
+      createAuditWorkflow({
+        excludedWorkflowPaths: [],
+        targetBranch: 'trunk',
+        waitSeconds: 45,
+      }),
+    ).toContain('uses: biw/required-checks-auditor@v1.0.2')
+    expect(
+      createAuditWorkflow({
+        excludedWorkflowPaths: [],
+        targetBranch: 'trunk',
+        waitSeconds: 45,
+      }),
+    ).toContain(
+      `if: \${{ failure() && steps.audit.outputs['ruleset-artifact-path'] != '' }}\n        uses: actions/upload-artifact@v4\n        with:\n          name: required-checks-ruleset`,
+    )
   })
 })
 
@@ -113,6 +129,9 @@ describe('runCli', () => {
     )
     await expect(readFile(join(cwd, '.github', 'workflows', 'required-checks-auditor.yml'), 'utf8')).resolves.toContain(
       'wait-seconds: 45',
+    )
+    await expect(readFile(join(cwd, '.github', 'workflows', 'required-checks-auditor.yml'), 'utf8')).resolves.toContain(
+      'target-branch: main',
     )
   })
 

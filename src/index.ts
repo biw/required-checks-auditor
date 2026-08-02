@@ -1,25 +1,30 @@
 import * as core from '@actions/core'
 import * as github from '@actions/github'
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
 import { discoverChecks, parseDelimitedList } from './discovery.js'
 import {
+  getBranchRuleState,
   getObservedExternalCheckContexts,
-  getRequiredCheckContexts,
   getWorkflowFiles,
 } from './github-api.js'
 import { observedCheckRefs } from './observation.js'
+import { createRulesetImport } from './ruleset.js'
 import { parseWaitSeconds, waitForSeconds } from './wait.js'
 
 const addSummary = async ({
   checks,
   missing,
   observedChecks,
+  targetHasRuleset,
   targetBranch,
   workflows,
 }: {
   checks: string[]
   missing: string[]
   observedChecks: string[]
+  targetHasRuleset: boolean
   targetBranch: string
   workflows: string[]
 }): Promise<void> => {
@@ -34,6 +39,8 @@ const addSummary = async ({
   await core.summary
     .addHeading(`Required checks audit for ${targetBranch}`)
     .addTable(rows)
+    .addHeading('Ruleset', 2)
+    .addList([targetHasRuleset ? 'An active ruleset applies to this branch.' : 'No active ruleset applies to this branch.'])
     .addHeading('Discovered workflows', 2)
     .addList(workflows)
     .addHeading('Observed external checks', 2)
@@ -101,26 +108,50 @@ const run = async (): Promise<void> => {
     throw new Error('No PR-relevant workflow checks were discovered.')
   }
 
-  const requiredChecks = await getRequiredCheckContexts({ branch: targetBranch, octokit, owner, repo })
+  const { hasAppliedRuleset, requiredChecks } = await getBranchRuleState({
+    branch: targetBranch,
+    octokit,
+    owner,
+    repo,
+  })
   const missingChecks = expectedChecks.filter(check => !requiredChecks.has(check))
+  const rulesetArtifactPath =
+    missingChecks.length > 0 && !hasAppliedRuleset
+      ? join(process.env.RUNNER_TEMP ?? process.cwd(), 'required-checks-ruleset.json')
+      : ''
+
+  if (rulesetArtifactPath.length > 0) {
+    await writeFile(
+      rulesetArtifactPath,
+      createRulesetImport({ checks: expectedChecks, targetBranch }),
+      'utf8',
+    )
+  }
 
   core.setOutput('expected-checks', JSON.stringify(expectedChecks))
   core.setOutput('missing-checks', JSON.stringify(missingChecks))
   core.setOutput('observed-checks', JSON.stringify(includedObservedChecks))
+  core.setOutput('ruleset-artifact-path', rulesetArtifactPath)
   core.setOutput('target-branch', targetBranch)
+  core.setOutput('target-has-ruleset', String(hasAppliedRuleset))
   await addSummary({
     checks: expectedChecks,
     missing: missingChecks,
     observedChecks: includedObservedChecks,
+    targetHasRuleset: hasAppliedRuleset,
     targetBranch,
     workflows: discovered.workflows,
   })
 
   if (missingChecks.length > 0) {
+    const artifactInstructions =
+      rulesetArtifactPath.length > 0
+        ? '\n\nNo active ruleset applies to this branch. Download the “required-checks-ruleset” artifact and import it in Settings → Rules → Rulesets.'
+        : ''
     core.setFailed(
       `The ${targetBranch} rules are missing required checks:\n${missingChecks
         .map(check => `- ${check}`)
-        .join('\n')}`,
+        .join('\n')}${artifactInstructions}`,
     )
   }
 }

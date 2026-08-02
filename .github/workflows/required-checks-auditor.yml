@@ -18,6 +18,16 @@ jobs:
     name: Required checks auditor
     runs-on: ubuntu-latest
     steps:
-      - uses: biw/required-checks-auditor@v1.0.0
+      - uses: actions/checkout@v4
+      - id: audit
+        uses: ./
         with:
+          target-branch: main
           wait-seconds: 30
+      - name: Upload starter ruleset
+        if: ${{ failure() && steps.audit.outputs['ruleset-artifact-path'] != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: required-checks-ruleset
+          path: ${{ steps.audit.outputs['ruleset-artifact-path'] }}
+          if-no-files-found: error

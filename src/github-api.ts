@@ -18,6 +18,11 @@ type RulesPaginator = (
 
 type RecordValue = Record<string, unknown>
 
+export interface BranchRuleState {
+  hasAppliedRuleset: boolean
+  requiredChecks: Set<string>
+}
+
 interface WorkflowDirectoryEntry {
   name: string
   path: string
@@ -109,6 +114,21 @@ export const getRequiredCheckContexts = async ({
   owner: string
   repo: string
 }): Promise<Set<string>> => {
+  const { requiredChecks } = await getBranchRuleState({ branch, octokit, owner, repo })
+  return requiredChecks
+}
+
+export const getBranchRuleState = async ({
+  branch,
+  octokit,
+  owner,
+  repo,
+}: {
+  branch: string
+  octokit: GitHubClient
+  owner: string
+  repo: string
+}): Promise<BranchRuleState> => {
   // This endpoint is newer than the endpoint map shipped with the Action toolkit's Octokit types.
   const paginateRules = octokit.paginate as unknown as RulesPaginator
   const rules = await paginateRules('GET /repos/{owner}/{repo}/rules/branches/{branch}', {
@@ -118,7 +138,10 @@ export const getRequiredCheckContexts = async ({
     repo,
   })
 
-  return new Set(rules.flatMap(requiredContextsFromRule))
+  return {
+    hasAppliedRuleset: rules.some(rule => isRecord(rule) && typeof rule.ruleset_id === 'number'),
+    requiredChecks: new Set(rules.flatMap(requiredContextsFromRule)),
+  }
 }
 
 export const getObservedExternalCheckContexts = async ({

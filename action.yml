@@ -37,8 +37,12 @@ outputs:
     description: JSON array of expected checks that are absent from the target branch's active rules.
   observed-checks:
     description: JSON array of non-GitHub-Actions checks observed on the current commit.
+  ruleset-artifact-path:
+    description: Path to a starter ruleset import generated when no active ruleset applies and checks are missing.
   target-branch:
     description: Target branch whose effective rules were audited.
+  target-has-ruleset:
+    description: Whether an active ruleset applies to the target branch.
 
 runs:
   using: node24
