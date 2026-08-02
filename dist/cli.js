@@ -8510,6 +8510,50 @@ const discoverChecks = ({ files, excludedWorkflowPaths = [], ignoredChecks = [],
 	};
 };
 //#endregion
+//#region src/line-diff.ts
+const lines = (value) => value.length === 0 ? [] : value.replace(/\n$/, "").split("\n");
+const changedLines = (before, after) => {
+	const commonSuffixLengths = Array.from({ length: before.length + 1 }, () => Array(after.length + 1).fill(0));
+	for (let beforeIndex = before.length - 1; beforeIndex >= 0; beforeIndex -= 1) for (let afterIndex = after.length - 1; afterIndex >= 0; afterIndex -= 1) if (before[beforeIndex] === after[afterIndex]) commonSuffixLengths[beforeIndex][afterIndex] = commonSuffixLengths[beforeIndex + 1][afterIndex + 1] + 1;
+	else commonSuffixLengths[beforeIndex][afterIndex] = Math.max(commonSuffixLengths[beforeIndex + 1][afterIndex], commonSuffixLengths[beforeIndex][afterIndex + 1]);
+	const differences = [];
+	let beforeIndex = 0;
+	let afterIndex = 0;
+	while (beforeIndex < before.length && afterIndex < after.length) if (before[beforeIndex] === after[afterIndex]) {
+		beforeIndex += 1;
+		afterIndex += 1;
+	} else if (commonSuffixLengths[beforeIndex + 1][afterIndex] >= commonSuffixLengths[beforeIndex][afterIndex + 1]) {
+		differences.push({
+			kind: "removed",
+			text: before[beforeIndex]
+		});
+		beforeIndex += 1;
+	} else {
+		differences.push({
+			kind: "added",
+			text: after[afterIndex]
+		});
+		afterIndex += 1;
+	}
+	differences.push(...before.slice(beforeIndex).map((text) => ({
+		kind: "removed",
+		text
+	})));
+	differences.push(...after.slice(afterIndex).map((text) => ({
+		kind: "added",
+		text
+	})));
+	return differences;
+};
+const background = {
+	added: "\x1B[48;2;28;58;39m",
+	removed: "\x1B[48;2;54;32;30m"
+};
+const formatLineDiff = (before, after, { color = process.stdout.isTTY === true } = {}) => changedLines(lines(before), lines(after)).map(({ kind, text }) => {
+	const line = `${kind === "added" ? "+" : "-"} ${text}`;
+	return color ? `${background[kind]}${line}\u001B[0m` : line;
+}).join("\n");
+//#endregion
 //#region src/local-workflows.ts
 const workflowFileName = (name) => /\.ya?ml$/i.test(name);
 const readLocalWorkflowFiles = async (cwd) => {
@@ -8625,7 +8669,17 @@ const runCli = async ({ actionRef = defaultActionRef, cwd = process.cwd(), log =
 		targetBranch,
 		waitSeconds
 	});
-	log(`\nGenerated ${generatedWorkflowPath}:\n\n${workflow}`);
+	if (existingWorkflow === void 0) log(`\nGenerated ${generatedWorkflowPath}:\n\n${workflow}`);
+	else if (existingWorkflow === workflow) {
+		log(`\n${generatedWorkflowPath} is already up to date.`);
+		return {
+			excludedWorkflowPaths,
+			targetBranch,
+			waitSeconds,
+			watchedWorkflowPaths,
+			wroteWorkflow: false
+		};
+	} else log(`\nChanges to ${generatedWorkflowPath}:\n\n${formatLineDiff(existingWorkflow, workflow)}`);
 	log("After its first run, add “Required checks auditor” to the target branch’s required status checks.");
 	const wroteWorkflow = await prompts.confirm({
 		default: existingWorkflow === void 0,

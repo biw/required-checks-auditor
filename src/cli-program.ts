@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { parse } from 'yaml'
 
 import { discoverChecks, parseDelimitedList } from './discovery.js'
+import { formatLineDiff } from './line-diff.js'
 import { readLocalWorkflowFiles } from './local-workflows.js'
 
 const defaultActionRef = 'biw/required-checks-auditor@v1.0.2'
@@ -211,7 +212,14 @@ export const runCli = async ({
     waitSeconds,
   })
 
-  log(`\nGenerated ${generatedWorkflowPath}:\n\n${workflow}`)
+  if (existingWorkflow === undefined) {
+    log(`\nGenerated ${generatedWorkflowPath}:\n\n${workflow}`)
+  } else if (existingWorkflow === workflow) {
+    log(`\n${generatedWorkflowPath} is already up to date.`)
+    return { excludedWorkflowPaths, targetBranch, waitSeconds, watchedWorkflowPaths, wroteWorkflow: false }
+  } else {
+    log(`\nChanges to ${generatedWorkflowPath}:\n\n${formatLineDiff(existingWorkflow, workflow)}`)
+  }
   log(
     'After its first run, add “Required checks auditor” to the target branch’s required status checks.',
   )

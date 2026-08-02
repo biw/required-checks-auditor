@@ -228,4 +228,42 @@ describe('runCli', () => {
             flaky check`,
     )
   })
+
+  it('shows a compact diff before overwriting an existing workflow', async () => {
+    const cwd = await createRepository()
+    const existingWorkflow = `name: Previous audit\n`
+    await writeFile(join(cwd, '.github', 'workflows', 'required-checks-auditor.yml'), existingWorkflow)
+    const logs: string[] = []
+    const prompts: CliPrompts = {
+      checkbox: async () => ['.github/workflows/ci.yml'],
+      confirm: async () => false,
+      input: async options => (options.message.startsWith('How long') ? '30' : 'main'),
+    }
+
+    await runCli({ cwd, log: message => logs.push(message), prompts })
+
+    expect(logs[0]).toMatch(/^\nChanges to \.github\/workflows\/required-checks-auditor\.yml:\n\n- name: Previous audit/)
+    expect(logs[0]).not.toContain('@@')
+  })
+
+  it('does not prompt to overwrite an unchanged generated workflow', async () => {
+    const cwd = await createRepository()
+    const workflow = createAuditWorkflow({
+      excludedWorkflowPaths: [],
+      targetBranch: 'main',
+      waitSeconds: 30,
+    })
+    await writeFile(join(cwd, '.github', 'workflows', 'required-checks-auditor.yml'), workflow)
+    const prompts: CliPrompts = {
+      checkbox: async () => ['.github/workflows/ci.yml', '.github/workflows/performance.yml'],
+      confirm: async () => {
+        throw new Error('The overwrite prompt should not be shown.')
+      },
+      input: async options => (options.message.startsWith('How long') ? '30' : 'main'),
+    }
+
+    const result = await runCli({ cwd, log: () => {}, prompts })
+
+    expect(result.wroteWorkflow).toBe(false)
+  })
 })
