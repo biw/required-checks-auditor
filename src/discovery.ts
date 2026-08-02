@@ -9,6 +9,7 @@ interface DiscoverChecksOptions {
   excludedWorkflowPaths?: string[] | undefined
   files: WorkflowFile[]
   ignoredChecks?: string[] | undefined
+  pullRequestHeadRef?: string | undefined
 }
 
 type RecordValue = Record<string, unknown>
@@ -28,20 +29,28 @@ const containsEveryBranchPattern = (value: unknown): boolean => {
   return patterns.includes('**') && !patterns.some(pattern => pattern.startsWith('!'))
 }
 
+const pullRequestRunsBeforeClose = (trigger: unknown): boolean => {
+  if (!isRecord(trigger) || !hasKey(trigger, 'types')) {
+    return true
+  }
+
+  return asArray(valueFor(trigger, 'types')).some(type => String(type) !== 'closed')
+}
+
 const runsOnAllPullRequestBranches = (triggers: unknown): boolean => {
   if (typeof triggers === 'string') {
-    return triggers === 'pull_request' || triggers === 'pull_request_target'
+    return triggers === 'pull_request'
   }
 
   if (Array.isArray(triggers)) {
-    return triggers.includes('pull_request') || triggers.includes('pull_request_target')
+    return triggers.includes('pull_request')
   }
 
   if (!isRecord(triggers)) {
     return false
   }
 
-  if (hasKey(triggers, 'pull_request') || hasKey(triggers, 'pull_request_target')) {
+  if (hasKey(triggers, 'pull_request') && pullRequestRunsBeforeClose(valueFor(triggers, 'pull_request'))) {
     return true
   }
 
@@ -67,6 +76,30 @@ const runsOnAllPullRequestBranches = (triggers: unknown): boolean => {
   return ignoredBranches === undefined || !containsEveryBranchPattern(ignoredBranches)
 }
 
+const releaseBranchPrefix = (condition: unknown): string | undefined => {
+  if (typeof condition !== 'string') {
+    return undefined
+  }
+
+  const expression = condition
+    .trim()
+    .replace(/^\$\{\{\s*/, '')
+    .replace(/\s*\}\}$/, '')
+    .trim()
+  const headRef = '(?:github\\.head_ref|github\\.event\\.pull_request\\.head\\.ref)'
+  const startsWith = new RegExp(
+    `^startsWith\\(\\s*${headRef}\\s*,\\s*(['\"])(release\\/[^'\"]*)\\1\\s*\\)$`,
+  )
+  const equals = new RegExp(`^${headRef}\\s*==\\s*(['\"])(release\\/[^'\"]*)\\1$`)
+
+  return startsWith.exec(expression)?.[2] ?? equals.exec(expression)?.[2]
+}
+
+const runsForPullRequestHead = (job: unknown, pullRequestHeadRef: string | undefined): boolean => {
+  const prefix = releaseBranchPrefix(valueFor(job, 'if'))
+  return prefix === undefined || pullRequestHeadRef?.startsWith(prefix) === true
+}
+
 const terminalJobs = (jobs: RecordValue): Array<[string, unknown]> => {
   const prerequisites = new Set(
     Object.values(jobs).flatMap(job => {
@@ -88,6 +121,7 @@ export const discoverChecks = ({
   files,
   excludedWorkflowPaths = [],
   ignoredChecks = [],
+  pullRequestHeadRef,
 }: DiscoverChecksOptions): { checks: string[]; workflows: string[] } => {
   const exclusions = new Set(excludedWorkflowPaths)
   const ignored = new Set(ignoredChecks)
@@ -117,8 +151,13 @@ export const discoverChecks = ({
       continue
     }
 
-    workflows.push(path)
+    let hasRelevantJob = false
     for (const [jobId, job] of terminalJobs(jobs)) {
+      if (!runsForPullRequestHead(job, pullRequestHeadRef)) {
+        continue
+      }
+      hasRelevantJob = true
+
       const jobName = valueFor(job, 'name')
       if (typeof jobName === 'string' && jobName.includes('${{')) {
         throw new Error(
@@ -131,6 +170,10 @@ export const discoverChecks = ({
       if (!ignored.has(checkName)) {
         expectedChecks.add(checkName)
       }
+    }
+
+    if (hasRelevantJob) {
+      workflows.push(path)
     }
   }
 

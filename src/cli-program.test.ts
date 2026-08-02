@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { createAuditWorkflow, runCli, type CliPrompts } from './cli-program.js'
+import { auditInputsFromWorkflow, createAuditWorkflow, runCli, type CliPrompts } from './cli-program.js'
 
 const temporaryDirectories: string[] = []
 
@@ -35,6 +35,7 @@ describe('createAuditWorkflow', () => {
     expect(
       createAuditWorkflow({
         excludedWorkflowPaths: ['.github/workflows/performance.yml'],
+        ignoredChecks: ['legacy check'],
         targetBranch: 'trunk',
         waitSeconds: 45,
       }),
@@ -53,6 +54,14 @@ describe('createAuditWorkflow', () => {
         waitSeconds: 45,
       }),
     ).toContain(`excluded-workflow-paths: |\n            .github/workflows/performance.yml`)
+    expect(
+      createAuditWorkflow({
+        excludedWorkflowPaths: ['.github/workflows/performance.yml'],
+        ignoredChecks: ['legacy check'],
+        targetBranch: 'trunk',
+        waitSeconds: 45,
+      }),
+    ).toContain(`ignored-checks: |\n            legacy check`)
     expect(
       createAuditWorkflow({
         excludedWorkflowPaths: [],
@@ -76,6 +85,27 @@ describe('createAuditWorkflow', () => {
     ).toContain(
       `if: \${{ failure() && steps.audit.outputs['ruleset-artifact-path'] != '' }}\n        uses: actions/upload-artifact@v4\n        with:\n          name: required-checks-ruleset`,
     )
+  })
+
+  it('reads explicit audit policy from an existing generated workflow', () => {
+    expect(
+      auditInputsFromWorkflow(`jobs:
+  audit:
+    steps:
+      - uses: biw/required-checks-auditor@v1.0.2
+        with:
+          excluded-workflow-paths: |
+            .github/workflows/release-build.yml
+            .github/workflows/release-publish.yml
+          ignored-checks: legacy, flaky
+`),
+    ).toEqual({
+      excludedWorkflowPaths: [
+        '.github/workflows/release-build.yml',
+        '.github/workflows/release-publish.yml',
+      ],
+      ignoredChecks: ['legacy', 'flaky'],
+    })
   })
 })
 
@@ -149,5 +179,53 @@ describe('runCli', () => {
     await expect(
       readFile(join(cwd, '.github', 'workflows', 'required-checks-auditor.yml'), 'utf8'),
     ).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('preserves explicit exclusions and ignored checks when overwriting a generated workflow', async () => {
+    const cwd = await createRepository()
+    await writeFile(
+      join(cwd, '.github', 'workflows', 'required-checks-auditor.yml'),
+      `jobs:
+  required-checks-auditor:
+    steps:
+      - uses: biw/required-checks-auditor@v1.0.2
+        with:
+          excluded-workflow-paths: |
+            .github/workflows/performance.yml
+            .github/workflows/release-build.yml
+          ignored-checks: |
+            legacy check
+            flaky check
+`,
+    )
+    const prompts: CliPrompts = {
+      checkbox: async options => {
+        expect(options.choices).toEqual([
+          { checked: true, name: '.github/workflows/ci.yml', value: '.github/workflows/ci.yml' },
+        ])
+        return ['.github/workflows/ci.yml']
+      },
+      confirm: async options => {
+        expect(options).toEqual({
+          default: false,
+          message: 'Overwrite .github/workflows/required-checks-auditor.yml?',
+        })
+        return true
+      },
+      input: async options => (options.message.startsWith('How long') ? '30' : 'main'),
+    }
+
+    await runCli({ cwd, log: () => {}, prompts })
+
+    await expect(readFile(join(cwd, '.github', 'workflows', 'required-checks-auditor.yml'), 'utf8')).resolves.toContain(
+      `excluded-workflow-paths: |
+            .github/workflows/performance.yml
+            .github/workflows/release-build.yml`,
+    )
+    await expect(readFile(join(cwd, '.github', 'workflows', 'required-checks-auditor.yml'), 'utf8')).resolves.toContain(
+      `ignored-checks: |
+            legacy check
+            flaky check`,
+    )
   })
 })

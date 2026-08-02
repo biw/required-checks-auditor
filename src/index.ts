@@ -11,6 +11,7 @@ import {
 } from './github-api.js'
 import { observedCheckRefs } from './observation.js'
 import { createRulesetImport } from './ruleset.js'
+import { resolveTargetBranch } from './target-branch.js'
 import { parseWaitSeconds, waitForSeconds } from './wait.js'
 
 const addSummary = async ({
@@ -56,11 +57,11 @@ const run = async (): Promise<void> => {
   }
 
   const token = core.getInput('github-token', { required: true })
-  const targetBranch =
-    core.getInput('target-branch') ||
-    github.context.payload.pull_request?.base.ref ||
-    process.env.GITHUB_BASE_REF ||
-    'main'
+  const targetBranch = resolveTargetBranch({
+    githubBaseRef: process.env.GITHUB_BASE_REF,
+    pullRequestBaseRef: github.context.payload.pull_request?.base.ref,
+    targetBranch: core.getInput('target-branch'),
+  })
   const workflowRef = core.getInput('workflow-ref') || github.context.sha
   const excludedWorkflowPaths = parseDelimitedList(core.getInput('excluded-workflow-paths'))
 
@@ -72,6 +73,7 @@ const run = async (): Promise<void> => {
     excludedWorkflowPaths,
     files,
     ignoredChecks,
+    pullRequestHeadRef: github.context.payload.pull_request?.head.ref || process.env.GITHUB_HEAD_REF,
   })
   const isPullRequestAudit =
     github.context.eventName === 'pull_request' || github.context.eventName === 'pull_request_target'

@@ -73,11 +73,17 @@ and the effective branch rules.
 - `wait-seconds`: seconds to wait before auditing; defaults to `30`. Set `0` to run immediately.
 - `target-branch`: protected branch whose active rules are audited. It defaults to the pull request's
   base branch; set it explicitly when the workflow can run on stacked pull requests.
-- `excluded-workflow-paths`: workflow files to leave out of automatic discovery.
+- `excluded-workflow-paths`: workflow files to leave out of automatic discovery. This is the
+  explicit escape hatch for workflows whose relevance cannot be determined statically.
 - `ignored-checks`: specific check names to leave out intentionally.
 
 The generated workflow always sets `target-branch` to the branch selected during setup, so stacked
 pull requests are checked against the protected branch rather than an intermediate stack branch.
+Rerunning setup preserves existing `excluded-workflow-paths` and `ignored-checks` values in the
+generated workflow. Automatic discovery ignores workflows that only run for closed pull requests,
+manual dispatch, or `pull_request_target`, and skips jobs with straightforward release-source
+branch conditions unless the audited pull request uses that release branch. Keep explicit
+exclusions for more complex conditional workflows.
 The workflow revision defaults to the current workflow commit. The action includes terminal GitHub
 Actions jobs and externally reported checks it observes on the pull request.
 
