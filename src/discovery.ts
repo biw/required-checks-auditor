@@ -28,6 +28,14 @@ const containsEveryBranchPattern = (value: unknown): boolean => {
   return patterns.includes('**') && !patterns.some(pattern => pattern.startsWith('!'))
 }
 
+const pullRequestRunsBeforeClose = (trigger: unknown): boolean => {
+  if (!isRecord(trigger) || !hasKey(trigger, 'types')) {
+    return true
+  }
+
+  return asArray(valueFor(trigger, 'types')).some(type => String(type) !== 'closed')
+}
+
 const runsOnAllPullRequestBranches = (triggers: unknown): boolean => {
   if (typeof triggers === 'string') {
     return triggers === 'pull_request' || triggers === 'pull_request_target'
@@ -41,7 +49,11 @@ const runsOnAllPullRequestBranches = (triggers: unknown): boolean => {
     return false
   }
 
-  if (hasKey(triggers, 'pull_request') || hasKey(triggers, 'pull_request_target')) {
+  if (
+    ['pull_request', 'pull_request_target'].some(
+      event => hasKey(triggers, event) && pullRequestRunsBeforeClose(valueFor(triggers, event)),
+    )
+  ) {
     return true
   }
 
@@ -117,7 +129,6 @@ export const discoverChecks = ({
       continue
     }
 
-    workflows.push(path)
     for (const [jobId, job] of terminalJobs(jobs)) {
       const jobName = valueFor(job, 'name')
       if (typeof jobName === 'string' && jobName.includes('${{')) {
@@ -132,6 +143,7 @@ export const discoverChecks = ({
         expectedChecks.add(checkName)
       }
     }
+    workflows.push(path)
   }
 
   return {

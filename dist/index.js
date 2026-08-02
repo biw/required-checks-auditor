@@ -26547,11 +26547,15 @@ const containsEveryBranchPattern = (value) => {
 	const patterns = asArray(value).map((pattern) => String(pattern));
 	return patterns.includes("**") && !patterns.some((pattern) => pattern.startsWith("!"));
 };
+const pullRequestRunsBeforeClose = (trigger) => {
+	if (!isRecord$1(trigger) || !hasKey(trigger, "types")) return true;
+	return asArray(valueFor(trigger, "types")).some((type) => String(type) !== "closed");
+};
 const runsOnAllPullRequestBranches = (triggers) => {
 	if (typeof triggers === "string") return triggers === "pull_request" || triggers === "pull_request_target";
 	if (Array.isArray(triggers)) return triggers.includes("pull_request") || triggers.includes("pull_request_target");
 	if (!isRecord$1(triggers)) return false;
-	if (hasKey(triggers, "pull_request") || hasKey(triggers, "pull_request_target")) return true;
+	if (["pull_request", "pull_request_target"].some((event) => hasKey(triggers, event) && pullRequestRunsBeforeClose(valueFor(triggers, event)))) return true;
 	if (!hasKey(triggers, "push")) return false;
 	const push = valueFor(triggers, "push");
 	if (!isRecord$1(push)) return true;
@@ -26587,13 +26591,13 @@ const discoverChecks = ({ files, excludedWorkflowPaths = [], ignoredChecks = [] 
 		if (!runsOnAllPullRequestBranches(triggers)) continue;
 		const jobs = valueFor(workflow, "jobs");
 		if (!isRecord$1(jobs)) continue;
-		workflows.push(path);
 		for (const [jobId, job] of terminalJobs(jobs)) {
 			const jobName = valueFor(job, "name");
 			if (typeof jobName === "string" && jobName.includes("${{")) throw new Error(`Cannot derive the required check for ${path}'s ${jobId} job because its name is dynamic. Give the job a static name or exclude the workflow.`);
 			const checkName = typeof jobName === "string" && jobName.length > 0 ? jobName : jobId;
 			if (!ignored.has(checkName)) expectedChecks.add(checkName);
 		}
+		workflows.push(path);
 	}
 	return {
 		checks: [...expectedChecks].sort(),
@@ -26690,6 +26694,9 @@ const createRulesetImport = ({ checks, targetBranch }) => `${JSON.stringify({
 	target: "branch"
 }, null, 2)}\n`;
 //#endregion
+//#region src/target-branch.ts
+const resolveTargetBranch = ({ githubBaseRef, pullRequestBaseRef, targetBranch }) => targetBranch || pullRequestBaseRef || githubBaseRef || "main";
+//#endregion
 //#region src/wait.ts
 const parseWaitSeconds = (value) => {
 	const trimmedValue = value.trim();
@@ -26723,7 +26730,11 @@ const run = async () => {
 		await waitForSeconds(waitSeconds);
 	}
 	const token = getInput("github-token", { required: true });
-	const targetBranch = getInput("target-branch") || context.payload.pull_request?.base.ref || process.env.GITHUB_BASE_REF || "main";
+	const targetBranch = resolveTargetBranch({
+		githubBaseRef: process.env.GITHUB_BASE_REF,
+		pullRequestBaseRef: context.payload.pull_request?.base.ref,
+		targetBranch: getInput("target-branch")
+	});
 	const workflowRef = getInput("workflow-ref") || context.sha;
 	const excludedWorkflowPaths = parseDelimitedList(getInput("excluded-workflow-paths"));
 	const octokit = getOctokit(token);

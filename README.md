@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: audit
-        uses: biw/required-checks-auditor@v1.0.2
+        uses: biw/required-checks-auditor@v1.0.3
         with:
           target-branch: main
           wait-seconds: 30
@@ -73,13 +73,20 @@ and the effective branch rules.
 - `wait-seconds`: seconds to wait before auditing; defaults to `30`. Set `0` to run immediately.
 - `target-branch`: protected branch whose active rules are audited. It defaults to the pull request's
   base branch; set it explicitly when the workflow can run on stacked pull requests.
-- `excluded-workflow-paths`: workflow files to leave out of automatic discovery.
+- `excluded-workflow-paths`: workflow files to leave out of automatic discovery when you
+  intentionally do not want their checks audited.
 - `ignored-checks`: specific check names to leave out intentionally.
 
-The generated workflow always sets `target-branch` to the branch selected during setup, so stacked
-pull requests are checked against the protected branch rather than an intermediate stack branch.
-The workflow revision defaults to the current workflow commit. The action includes terminal GitHub
-Actions jobs and externally reported checks it observes on the pull request.
+### Generated workflow
+
+- Setup pins `target-branch` to the branch you choose, so stacked pull requests audit the protected
+  branch rather than an intermediate branch.
+- Rerunning setup preserves existing `excluded-workflow-paths` and `ignored-checks` values.
+
+### What the audit discovers
+
+- GitHub Actions checks in eligible workflows, plus external checks observed on the pull request.
+- Workflows that can run only after a pull request closes or through manual dispatch are ignored.
 
 If no active ruleset applies to the target branch and checks are missing, the failed run includes a
 `required-checks-ruleset` artifact. Download it and import it in **Settings → Rules → Rulesets**.

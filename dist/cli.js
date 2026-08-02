@@ -5,7 +5,7 @@ import { stripVTControlCharacters, styleText } from "node:util";
 import process$1 from "node:process";
 import * as readline from "node:readline";
 import path, { join } from "node:path";
-import { access, readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, readdir, writeFile } from "node:fs/promises";
 //#region \0rolldown/runtime.js
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -8429,35 +8429,40 @@ var import_dist = (/* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.visit = visit.visit;
 	exports.visitAsync = visit.visitAsync;
 })))();
-const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
-const hasKey = (value, key) => isRecord(value) && Object.hasOwn(value, key);
-const valueFor = (value, key) => hasKey(value, key) ? value[key] : void 0;
+const isRecord$1 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+const hasKey = (value, key) => isRecord$1(value) && Object.hasOwn(value, key);
+const valueFor$1 = (value, key) => hasKey(value, key) ? value[key] : void 0;
 const asArray = (value) => Array.isArray(value) ? value : [value];
 const containsEveryBranchPattern = (value) => {
 	const patterns = asArray(value).map((pattern) => String(pattern));
 	return patterns.includes("**") && !patterns.some((pattern) => pattern.startsWith("!"));
 };
+const pullRequestRunsBeforeClose = (trigger) => {
+	if (!isRecord$1(trigger) || !hasKey(trigger, "types")) return true;
+	return asArray(valueFor$1(trigger, "types")).some((type) => String(type) !== "closed");
+};
 const runsOnAllPullRequestBranches = (triggers) => {
 	if (typeof triggers === "string") return triggers === "pull_request" || triggers === "pull_request_target";
 	if (Array.isArray(triggers)) return triggers.includes("pull_request") || triggers.includes("pull_request_target");
-	if (!isRecord(triggers)) return false;
-	if (hasKey(triggers, "pull_request") || hasKey(triggers, "pull_request_target")) return true;
+	if (!isRecord$1(triggers)) return false;
+	if (["pull_request", "pull_request_target"].some((event) => hasKey(triggers, event) && pullRequestRunsBeforeClose(valueFor$1(triggers, event)))) return true;
 	if (!hasKey(triggers, "push")) return false;
-	const push = valueFor(triggers, "push");
-	if (!isRecord(push)) return true;
-	const branches = valueFor(push, "branches");
+	const push = valueFor$1(triggers, "push");
+	if (!isRecord$1(push)) return true;
+	const branches = valueFor$1(push, "branches");
 	if (branches !== void 0) return containsEveryBranchPattern(branches);
-	if (valueFor(push, "tags") !== void 0) return false;
-	const ignoredBranches = valueFor(push, "branches-ignore");
+	if (valueFor$1(push, "tags") !== void 0) return false;
+	const ignoredBranches = valueFor$1(push, "branches-ignore");
 	return ignoredBranches === void 0 || !containsEveryBranchPattern(ignoredBranches);
 };
 const terminalJobs = (jobs) => {
 	const prerequisites = new Set(Object.values(jobs).flatMap((job) => {
-		const needs = valueFor(job, "needs");
+		const needs = valueFor$1(job, "needs");
 		return needs === void 0 ? [] : asArray(needs);
 	}));
 	return Object.entries(jobs).filter(([jobId]) => !prerequisites.has(jobId));
 };
+const parseDelimitedList = (value) => value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
 const discoverChecks = ({ files, excludedWorkflowPaths = [], ignoredChecks = [] }) => {
 	const exclusions = new Set(excludedWorkflowPaths);
 	const ignored = new Set(ignoredChecks);
@@ -8472,23 +8477,67 @@ const discoverChecks = ({ files, excludedWorkflowPaths = [], ignoredChecks = [] 
 			const message = error instanceof Error ? error.message : String(error);
 			throw new Error(`Could not parse ${path}: ${message}`);
 		}
-		const triggers = valueFor(workflow, "on");
+		const triggers = valueFor$1(workflow, "on");
 		if (!runsOnAllPullRequestBranches(triggers)) continue;
-		const jobs = valueFor(workflow, "jobs");
-		if (!isRecord(jobs)) continue;
-		workflows.push(path);
+		const jobs = valueFor$1(workflow, "jobs");
+		if (!isRecord$1(jobs)) continue;
 		for (const [jobId, job] of terminalJobs(jobs)) {
-			const jobName = valueFor(job, "name");
+			const jobName = valueFor$1(job, "name");
 			if (typeof jobName === "string" && jobName.includes("${{")) throw new Error(`Cannot derive the required check for ${path}'s ${jobId} job because its name is dynamic. Give the job a static name or exclude the workflow.`);
 			const checkName = typeof jobName === "string" && jobName.length > 0 ? jobName : jobId;
 			if (!ignored.has(checkName)) expectedChecks.add(checkName);
 		}
+		workflows.push(path);
 	}
 	return {
 		checks: [...expectedChecks].sort(),
 		workflows: workflows.sort()
 	};
 };
+//#endregion
+//#region src/line-diff.ts
+const lines = (value) => value.length === 0 ? [] : value.replace(/\n$/, "").split("\n");
+const changedLines = (before, after) => {
+	const commonSuffixLengths = Array.from({ length: before.length + 1 }, () => Array(after.length + 1).fill(0));
+	for (let beforeIndex = before.length - 1; beforeIndex >= 0; beforeIndex -= 1) for (let afterIndex = after.length - 1; afterIndex >= 0; afterIndex -= 1) if (before[beforeIndex] === after[afterIndex]) commonSuffixLengths[beforeIndex][afterIndex] = commonSuffixLengths[beforeIndex + 1][afterIndex + 1] + 1;
+	else commonSuffixLengths[beforeIndex][afterIndex] = Math.max(commonSuffixLengths[beforeIndex + 1][afterIndex], commonSuffixLengths[beforeIndex][afterIndex + 1]);
+	const differences = [];
+	let beforeIndex = 0;
+	let afterIndex = 0;
+	while (beforeIndex < before.length && afterIndex < after.length) if (before[beforeIndex] === after[afterIndex]) {
+		beforeIndex += 1;
+		afterIndex += 1;
+	} else if (commonSuffixLengths[beforeIndex + 1][afterIndex] >= commonSuffixLengths[beforeIndex][afterIndex + 1]) {
+		differences.push({
+			kind: "removed",
+			text: before[beforeIndex]
+		});
+		beforeIndex += 1;
+	} else {
+		differences.push({
+			kind: "added",
+			text: after[afterIndex]
+		});
+		afterIndex += 1;
+	}
+	differences.push(...before.slice(beforeIndex).map((text) => ({
+		kind: "removed",
+		text
+	})));
+	differences.push(...after.slice(afterIndex).map((text) => ({
+		kind: "added",
+		text
+	})));
+	return differences;
+};
+const background = {
+	added: "\x1B[48;2;28;58;39m",
+	removed: "\x1B[48;2;54;32;30m"
+};
+const formatLineDiff = (before, after, { color = process.stdout.isTTY === true } = {}) => changedLines(lines(before), lines(after)).map(({ kind, text }) => {
+	const line = `${kind === "added" ? "+" : "-"} ${text}`;
+	return color ? `${background[kind]}${line}\u001B[0m` : line;
+}).join("\n");
 //#endregion
 //#region src/local-workflows.ts
 const workflowFileName = (name) => /\.ya?ml$/i.test(name);
@@ -8509,7 +8558,7 @@ const readLocalWorkflowFiles = async (cwd) => {
 };
 //#endregion
 //#region src/cli-program.ts
-const defaultActionRef = "biw/required-checks-auditor@v1.0.2";
+const defaultActionRef = "biw/required-checks-auditor@v1.0.3";
 const generatedWorkflowPath = ".github/workflows/required-checks-auditor.yml";
 const defaultPrompts = {
 	checkbox: (options) => dist_default$2(options),
@@ -8518,12 +8567,65 @@ const defaultPrompts = {
 };
 const validBranchName = (value) => value.trim().length > 0 || "Enter the branch to protect, for example main.";
 const validWaitSeconds = (value) => /^(0|[1-9]\d*)$/.test(value.trim()) || "Enter a non-negative whole number of seconds.";
-const fileExists = async (path) => access(path).then(() => true).catch(() => false);
-const createAuditWorkflow = ({ actionRef = defaultActionRef, excludedWorkflowPaths, targetBranch, waitSeconds = 30 }) => {
-	return `# Generated by npx required-checks-auditor\nname: Audit Required PR Checks\n\non:\n  pull_request:\n    branches: [${targetBranch}]\n    types: [opened, ready_for_review, reopened, synchronize]\n  branch_protection_rule:\n    types: [created, edited, deleted]\n\npermissions:\n  contents: read\n  checks: read\n  statuses: read\n\njobs:\n  required-checks-auditor:\n    name: Required checks auditor\n    runs-on: ubuntu-latest\n    steps:\n      - id: audit\n        uses: ${actionRef}\n        with:\n          target-branch: ${targetBranch}\n          wait-seconds: ${waitSeconds}${excludedWorkflowPaths.length === 0 ? "" : `\n          excluded-workflow-paths: |\n${excludedWorkflowPaths.map((path) => `            ${path}`).join("\n")}`}\n      - name: Upload starter ruleset\n        if: \${{ failure() && steps.audit.outputs['ruleset-artifact-path'] != '' }}\n        uses: actions/upload-artifact@v4\n        with:\n          name: required-checks-ruleset\n          path: \${{ steps.audit.outputs['ruleset-artifact-path'] }}\n          if-no-files-found: error\n`;
+const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+const valueFor = (value, key) => isRecord(value) && Object.hasOwn(value, key) ? value[key] : void 0;
+const isAuditAction = (value) => typeof value === "string" && /(?:^|\/)required-checks-auditor@/i.test(value);
+const listInput = (value) => typeof value === "string" ? parseDelimitedList(value) : [];
+const unique = (values) => [...new Set(values)];
+const auditInputsFromWorkflow = (content) => {
+	let workflow;
+	try {
+		workflow = (0, import_dist.parse)(content);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		throw new Error(`Could not parse the existing ${generatedWorkflowPath}: ${message}`);
+	}
+	const excludedWorkflowPaths = [];
+	const ignoredChecks = [];
+	const jobs = valueFor(workflow, "jobs");
+	if (!isRecord(jobs)) return {
+		excludedWorkflowPaths,
+		ignoredChecks
+	};
+	for (const job of Object.values(jobs)) {
+		const steps = valueFor(job, "steps");
+		if (!Array.isArray(steps)) continue;
+		for (const step of steps) {
+			if (!isAuditAction(valueFor(step, "uses"))) continue;
+			const inputs = valueFor(step, "with");
+			excludedWorkflowPaths.push(...listInput(valueFor(inputs, "excluded-workflow-paths")));
+			ignoredChecks.push(...listInput(valueFor(inputs, "ignored-checks")));
+		}
+	}
+	return {
+		excludedWorkflowPaths: unique(excludedWorkflowPaths),
+		ignoredChecks: unique(ignoredChecks)
+	};
+};
+const readExistingAuditWorkflow = async (path) => {
+	try {
+		return await readFile(path, "utf8");
+	} catch (error) {
+		if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return;
+		throw error;
+	}
+};
+const createAuditWorkflow = ({ actionRef = defaultActionRef, excludedWorkflowPaths, ignoredChecks = [], targetBranch, waitSeconds = 30 }) => {
+	return `# Generated by npx required-checks-auditor\nname: Audit Required PR Checks\n\non:\n  pull_request:\n    branches: [${targetBranch}]\n    types: [opened, ready_for_review, reopened, synchronize]\n  branch_protection_rule:\n    types: [created, edited, deleted]\n\npermissions:\n  contents: read\n  checks: read\n  statuses: read\n\njobs:\n  required-checks-auditor:\n    name: Required checks auditor\n    runs-on: ubuntu-latest\n    steps:\n      - id: audit\n        uses: ${actionRef}\n        with:\n          target-branch: ${targetBranch}\n          wait-seconds: ${waitSeconds}${excludedWorkflowPaths.length === 0 ? "" : `\n          excluded-workflow-paths: |\n${excludedWorkflowPaths.map((path) => `            ${path}`).join("\n")}`}${ignoredChecks.length === 0 ? "" : `\n          ignored-checks: |\n${ignoredChecks.map((check) => `            ${check}`).join("\n")}`}\n      - name: Upload starter ruleset\n        if: \${{ failure() && steps.audit.outputs['ruleset-artifact-path'] != '' }}\n        uses: actions/upload-artifact@v4\n        with:\n          name: required-checks-ruleset\n          path: \${{ steps.audit.outputs['ruleset-artifact-path'] }}\n          if-no-files-found: error\n`;
 };
 const runCli = async ({ actionRef = defaultActionRef, cwd = process.cwd(), log = console.log, prompts = defaultPrompts } = {}) => {
-	const discovered = discoverChecks({ files: (await readLocalWorkflowFiles(cwd)).filter((file) => file.path !== generatedWorkflowPath) });
+	const destination = join(cwd, generatedWorkflowPath);
+	const existingWorkflow = await readExistingAuditWorkflow(destination);
+	const preservedInputs = existingWorkflow === void 0 ? {
+		excludedWorkflowPaths: [],
+		ignoredChecks: []
+	} : auditInputsFromWorkflow(existingWorkflow);
+	const files = (await readLocalWorkflowFiles(cwd)).filter((file) => file.path !== generatedWorkflowPath);
+	const discovered = discoverChecks({
+		excludedWorkflowPaths: preservedInputs.excludedWorkflowPaths,
+		files,
+		ignoredChecks: preservedInputs.ignoredChecks
+	});
 	if (discovered.workflows.length === 0) throw new Error("No pull-request-relevant workflows were found in .github/workflows.");
 	const targetBranch = (await prompts.input({
 		default: "main",
@@ -8539,7 +8641,7 @@ const runCli = async ({ actionRef = defaultActionRef, cwd = process.cwd(), log =
 		message: "Which workflows should the auditor watch?",
 		required: true
 	});
-	const excludedWorkflowPaths = discovered.workflows.filter((path) => !watchedWorkflowPaths.includes(path));
+	const excludedWorkflowPaths = unique([...preservedInputs.excludedWorkflowPaths, ...discovered.workflows.filter((path) => !watchedWorkflowPaths.includes(path))]);
 	const waitSeconds = Number((await prompts.input({
 		default: "30",
 		message: "How long would you like to wait before running this check? (in seconds)",
@@ -8548,16 +8650,25 @@ const runCli = async ({ actionRef = defaultActionRef, cwd = process.cwd(), log =
 	const workflow = createAuditWorkflow({
 		actionRef,
 		excludedWorkflowPaths,
+		ignoredChecks: preservedInputs.ignoredChecks,
 		targetBranch,
 		waitSeconds
 	});
-	log(`\nGenerated ${generatedWorkflowPath}:\n\n${workflow}`);
+	if (existingWorkflow === void 0) log(`\nGenerated ${generatedWorkflowPath}:\n\n${workflow}`);
+	else if (existingWorkflow === workflow) {
+		log(`\n${generatedWorkflowPath} is already up to date.`);
+		return {
+			excludedWorkflowPaths,
+			targetBranch,
+			waitSeconds,
+			watchedWorkflowPaths,
+			wroteWorkflow: false
+		};
+	} else log(`\nChanges to ${generatedWorkflowPath}:\n\n${formatLineDiff(existingWorkflow, workflow)}`);
 	log("After its first run, add “Required checks auditor” to the target branch’s required status checks.");
-	const destination = join(cwd, generatedWorkflowPath);
-	const existingWorkflow = await fileExists(destination);
 	const wroteWorkflow = await prompts.confirm({
-		default: !existingWorkflow,
-		message: `${existingWorkflow ? "Overwrite" : "Write"} ${generatedWorkflowPath}?`
+		default: existingWorkflow === void 0,
+		message: `${existingWorkflow === void 0 ? "Write" : "Overwrite"} ${generatedWorkflowPath}?`
 	});
 	if (wroteWorkflow) {
 		await writeFile(destination, workflow);

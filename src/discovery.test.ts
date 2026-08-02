@@ -71,6 +71,66 @@ jobs:
     expect(result.workflows).toEqual(['.github/workflows/test.yml'])
   })
 
+  it('ignores workflows that only run after a PR closes or by manual dispatch', () => {
+    const result = discoverChecks({
+      files: [
+        workflow(
+          '.github/workflows/release-publish.yml',
+          `on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+  cleanup-abandoned:
+    runs-on: ubuntu-latest
+`,
+        ),
+        workflow(
+          '.github/workflows/manual.yml',
+          `on: workflow_dispatch
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+`,
+        ),
+        workflow(
+          '.github/workflows/closed-target.yml',
+          `on:
+  pull_request_target:
+    types: [closed]
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+`,
+        ),
+      ],
+    })
+
+    expect(result).toEqual({ checks: [], workflows: [] })
+  })
+
+  it('discovers pull_request_target workflows that run before a pull request closes', () => {
+    const result = discoverChecks({
+      files: [
+        workflow(
+          '.github/workflows/mute-pr-notifications.yml',
+          `on: pull_request_target
+jobs:
+  mute-notification:
+    runs-on: ubuntu-latest
+`,
+        ),
+      ],
+    })
+
+    expect(result).toEqual({
+      checks: ['mute-notification'],
+      workflows: ['.github/workflows/mute-pr-notifications.yml'],
+    })
+  })
+
   it('supports exclusions and ignores exact check names', () => {
     const result = discoverChecks({
       excludedWorkflowPaths: ['.github/workflows/release.yml'],
