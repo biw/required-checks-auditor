@@ -85,12 +85,8 @@ and the effective branch rules.
 
 ### What the audit discovers
 
-- Terminal GitHub Actions jobs in eligible workflows, plus external checks observed on the pull
-  request.
-- Workflows that only run for closed pull requests, manual dispatch, or `pull_request_target` are
-  ignored.
-- Jobs guarded by simple release-source branch conditions are included only for release pull
-  requests.
+- GitHub Actions checks in eligible workflows, plus external checks observed on the pull request.
+- Workflows that can run only after a pull request closes or through manual dispatch are ignored.
 
 If no active ruleset applies to the target branch and checks are missing, the failed run includes a
 `required-checks-ruleset` artifact. Download it and import it in **Settings → Rules → Rulesets**.

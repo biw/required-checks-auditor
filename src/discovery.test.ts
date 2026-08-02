@@ -95,13 +95,23 @@ jobs:
     runs-on: ubuntu-latest
 `,
         ),
+        workflow(
+          '.github/workflows/closed-target.yml',
+          `on:
+  pull_request_target:
+    types: [closed]
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+`,
+        ),
       ],
     })
 
     expect(result).toEqual({ checks: [], workflows: [] })
   })
 
-  it('ignores pull_request_target-only workflows', () => {
+  it('discovers pull_request_target workflows that run before a pull request closes', () => {
     const result = discoverChecks({
       files: [
         workflow(
@@ -115,31 +125,9 @@ jobs:
       ],
     })
 
-    expect(result).toEqual({ checks: [], workflows: [] })
-  })
-
-  it('only includes simply guarded release jobs for release pull requests', () => {
-    const files = [
-      workflow(
-        '.github/workflows/release-build.yml',
-        `on: pull_request
-jobs:
-  test:
-    runs-on: ubuntu-latest
-  build:
-    if: \${{ startsWith(github.head_ref, 'release/v') }}
-    runs-on: ubuntu-latest
-`,
-      ),
-    ]
-
-    expect(discoverChecks({ files, pullRequestHeadRef: 'feature/fix' })).toEqual({
-      checks: ['test'],
-      workflows: ['.github/workflows/release-build.yml'],
-    })
-    expect(discoverChecks({ files, pullRequestHeadRef: 'release/v1.2.3' })).toEqual({
-      checks: ['build', 'test'],
-      workflows: ['.github/workflows/release-build.yml'],
+    expect(result).toEqual({
+      checks: ['mute-notification'],
+      workflows: ['.github/workflows/mute-pr-notifications.yml'],
     })
   })
 

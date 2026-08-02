@@ -26552,10 +26552,10 @@ const pullRequestRunsBeforeClose = (trigger) => {
 	return asArray(valueFor(trigger, "types")).some((type) => String(type) !== "closed");
 };
 const runsOnAllPullRequestBranches = (triggers) => {
-	if (typeof triggers === "string") return triggers === "pull_request";
-	if (Array.isArray(triggers)) return triggers.includes("pull_request");
+	if (typeof triggers === "string") return triggers === "pull_request" || triggers === "pull_request_target";
+	if (Array.isArray(triggers)) return triggers.includes("pull_request") || triggers.includes("pull_request_target");
 	if (!isRecord$1(triggers)) return false;
-	if (hasKey(triggers, "pull_request") && pullRequestRunsBeforeClose(valueFor(triggers, "pull_request"))) return true;
+	if (["pull_request", "pull_request_target"].some((event) => hasKey(triggers, event) && pullRequestRunsBeforeClose(valueFor(triggers, event)))) return true;
 	if (!hasKey(triggers, "push")) return false;
 	const push = valueFor(triggers, "push");
 	if (!isRecord$1(push)) return true;
@@ -26565,18 +26565,6 @@ const runsOnAllPullRequestBranches = (triggers) => {
 	const ignoredBranches = valueFor(push, "branches-ignore");
 	return ignoredBranches === void 0 || !containsEveryBranchPattern(ignoredBranches);
 };
-const releaseBranchPrefix = (condition) => {
-	if (typeof condition !== "string") return;
-	const expression = condition.trim().replace(/^\$\{\{\s*/, "").replace(/\s*\}\}$/, "").trim();
-	const headRef = "(?:github\\.head_ref|github\\.event\\.pull_request\\.head\\.ref)";
-	const startsWith = new RegExp(`^startsWith\\(\\s*${headRef}\\s*,\\s*(['\"])(release\\/[^'\"]*)\\1\\s*\\)$`);
-	const equals = new RegExp(`^${headRef}\\s*==\\s*(['\"])(release\\/[^'\"]*)\\1$`);
-	return startsWith.exec(expression)?.[2] ?? equals.exec(expression)?.[2];
-};
-const runsForPullRequestHead = (job, pullRequestHeadRef) => {
-	const prefix = releaseBranchPrefix(valueFor(job, "if"));
-	return prefix === void 0 || pullRequestHeadRef?.startsWith(prefix) === true;
-};
 const terminalJobs = (jobs) => {
 	const prerequisites = new Set(Object.values(jobs).flatMap((job) => {
 		const needs = valueFor(job, "needs");
@@ -26585,7 +26573,7 @@ const terminalJobs = (jobs) => {
 	return Object.entries(jobs).filter(([jobId]) => !prerequisites.has(jobId));
 };
 const parseDelimitedList = (value) => value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
-const discoverChecks = ({ files, excludedWorkflowPaths = [], ignoredChecks = [], pullRequestHeadRef }) => {
+const discoverChecks = ({ files, excludedWorkflowPaths = [], ignoredChecks = [] }) => {
 	const exclusions = new Set(excludedWorkflowPaths);
 	const ignored = new Set(ignoredChecks);
 	const expectedChecks = /* @__PURE__ */ new Set();
@@ -26603,16 +26591,13 @@ const discoverChecks = ({ files, excludedWorkflowPaths = [], ignoredChecks = [],
 		if (!runsOnAllPullRequestBranches(triggers)) continue;
 		const jobs = valueFor(workflow, "jobs");
 		if (!isRecord$1(jobs)) continue;
-		let hasRelevantJob = false;
 		for (const [jobId, job] of terminalJobs(jobs)) {
-			if (!runsForPullRequestHead(job, pullRequestHeadRef)) continue;
-			hasRelevantJob = true;
 			const jobName = valueFor(job, "name");
 			if (typeof jobName === "string" && jobName.includes("${{")) throw new Error(`Cannot derive the required check for ${path}'s ${jobId} job because its name is dynamic. Give the job a static name or exclude the workflow.`);
 			const checkName = typeof jobName === "string" && jobName.length > 0 ? jobName : jobId;
 			if (!ignored.has(checkName)) expectedChecks.add(checkName);
 		}
-		if (hasRelevantJob) workflows.push(path);
+		workflows.push(path);
 	}
 	return {
 		checks: [...expectedChecks].sort(),
@@ -26764,8 +26749,7 @@ const run = async () => {
 	const discovered = discoverChecks({
 		excludedWorkflowPaths,
 		files,
-		ignoredChecks,
-		pullRequestHeadRef: context.payload.pull_request?.head.ref || process.env.GITHUB_HEAD_REF
+		ignoredChecks
 	});
 	const isPullRequestAudit = context.eventName === "pull_request" || context.eventName === "pull_request_target";
 	const observedChecks = /* @__PURE__ */ new Set();

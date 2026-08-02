@@ -73,7 +73,6 @@ const run = async (): Promise<void> => {
     excludedWorkflowPaths,
     files,
     ignoredChecks,
-    pullRequestHeadRef: github.context.payload.pull_request?.head.ref || process.env.GITHUB_HEAD_REF,
   })
   const isPullRequestAudit =
     github.context.eventName === 'pull_request' || github.context.eventName === 'pull_request_target'
