@@ -77,14 +77,20 @@ and the effective branch rules.
   intentionally do not want their checks audited.
 - `ignored-checks`: specific check names to leave out intentionally.
 
-The generated workflow always sets `target-branch` to the branch selected during setup, so stacked
-pull requests are checked against the protected branch rather than an intermediate stack branch.
-Rerunning setup preserves existing `excluded-workflow-paths` and `ignored-checks` values in the
-generated workflow. Automatic discovery ignores workflows that only run for closed pull requests,
-manual dispatch, or `pull_request_target`, and skips jobs with straightforward release-source
-branch conditions unless the audited pull request uses that release branch.
-The workflow revision defaults to the current workflow commit. The action includes terminal GitHub
-Actions jobs and externally reported checks it observes on the pull request.
+### Generated workflow
+
+- Setup pins `target-branch` to the branch you choose, so stacked pull requests audit the protected
+  branch rather than an intermediate branch.
+- Rerunning setup preserves existing `excluded-workflow-paths` and `ignored-checks` values.
+
+### What the audit discovers
+
+- Terminal GitHub Actions jobs in eligible workflows, plus external checks observed on the pull
+  request.
+- Workflows that only run for closed pull requests, manual dispatch, or `pull_request_target` are
+  ignored.
+- Jobs guarded by simple release-source branch conditions are included only for release pull
+  requests.
 
 If no active ruleset applies to the target branch and checks are missing, the failed run includes a
 `required-checks-ruleset` artifact. Download it and import it in **Settings → Rules → Rulesets**.
