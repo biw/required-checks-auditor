@@ -13,6 +13,8 @@ interface DiscoverChecksOptions {
 
 type RecordValue = Record<string, unknown>
 
+type MatrixRow = RecordValue
+
 const isRecord = (value: unknown): value is RecordValue =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -90,6 +92,131 @@ const terminalJobs = (jobs: RecordValue): Array<[string, unknown]> => {
   return Object.entries(jobs).filter(([jobId]) => !prerequisites.has(jobId))
 }
 
+const isStaticValue = (value: unknown): boolean => {
+  if (typeof value === 'string') {
+    return !value.includes('${{')
+  }
+
+  if (Array.isArray(value)) {
+    return value.every(isStaticValue)
+  }
+
+  if (isRecord(value)) {
+    return Object.values(value).every(isStaticValue)
+  }
+
+  return value === null || ['boolean', 'number'].includes(typeof value)
+}
+
+const valuesEqual = (left: unknown, right: unknown): boolean =>
+  JSON.stringify(left) === JSON.stringify(right)
+
+const rowMatches = (row: MatrixRow, values: RecordValue): boolean =>
+  Object.entries(values).every(([key, value]) => Object.hasOwn(row, key) && valuesEqual(row[key], value))
+
+const combinationsFor = (dimensions: Array<[string, unknown[]]>): MatrixRow[] =>
+  dimensions.reduce<MatrixRow[]>(
+    (rows, [key, values]) => rows.flatMap(row => values.map(value => ({ ...row, [key]: value }))),
+    [{}],
+  )
+
+const matrixRowsFor = (job: unknown): MatrixRow[] | undefined => {
+  const strategy = valueFor(job, 'strategy')
+  const matrix = valueFor(strategy, 'matrix')
+  if (!isRecord(matrix) || !isStaticValue(matrix)) {
+    return undefined
+  }
+
+  const dimensions = Object.entries(matrix).flatMap(([key, value]) =>
+    key === 'include' || key === 'exclude' ? [] : [[key, asArray(value)] as [string, unknown[]]],
+  )
+  // A matrix made up solely of `include` entries creates one job per entry;
+  // there is no empty base combination for those entries to overwrite.
+  const initialRows = dimensions.length === 0 ? [] : combinationsFor(dimensions)
+  const exclusions = valueFor(matrix, 'exclude')
+  if (exclusions !== undefined && (!Array.isArray(exclusions) || !exclusions.every(isRecord))) {
+    return undefined
+  }
+
+  const originalRows = initialRows.filter(
+    row => !(exclusions ?? []).some(exclusion => rowMatches(row, exclusion as RecordValue)),
+  )
+  const rows = originalRows.map(row => ({ ...row }))
+  const inclusions = valueFor(matrix, 'include')
+  if (inclusions === undefined) {
+    return rows
+  }
+  if (!Array.isArray(inclusions) || !inclusions.every(isRecord)) {
+    return undefined
+  }
+
+  for (const inclusionValue of inclusions) {
+    const inclusion = inclusionValue as RecordValue
+    const matchingRows = originalRows
+      .map((row, index) => ({ index, row }))
+      .filter(({ row }) =>
+        Object.entries(inclusion).every(
+          ([key, value]) => !Object.hasOwn(row, key) || valuesEqual(row[key], value),
+        ),
+      )
+    if (matchingRows.length === 0) {
+      rows.push({ ...inclusion })
+      continue
+    }
+
+    matchingRows.forEach(({ index }) => {
+      const row = rows[index]
+      if (row !== undefined) {
+        Object.assign(row, inclusion)
+      }
+    })
+  }
+
+  return rows
+}
+
+const valueAtPath = (value: unknown, path: string[]): unknown =>
+  path.reduce<unknown>((current, key) => valueFor(current, key), value)
+
+const resolveMatrixName = (name: string, job: unknown): string[] | undefined => {
+  const rows = matrixRowsFor(job)
+  if (rows === undefined) {
+    return undefined
+  }
+
+  const expressions = [...name.matchAll(/\$\{\{\s*matrix\.([A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*)\s*\}\}/g)]
+  if (expressions.length === 0) {
+    return undefined
+  }
+
+  const unresolvedExpression = name
+    .replace(/\$\{\{\s*matrix\.([A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*)\s*\}\}/g, '')
+    .includes('${{')
+  if (unresolvedExpression) {
+    return undefined
+  }
+
+  const names = rows.map(row => {
+    let resolvedName = name
+    for (const expression of expressions) {
+      const matchedPath = expression[1]
+      const wholeExpression = expression[0]
+      if (matchedPath === undefined || wholeExpression === undefined) {
+        return undefined
+      }
+      const path = matchedPath.split('.')
+      const value = valueAtPath(row, path)
+      if (value === undefined || typeof value === 'object') {
+        return undefined
+      }
+      resolvedName = resolvedName.replace(wholeExpression, String(value))
+    }
+    return resolvedName
+  })
+
+  return names.every((name): name is string => name !== undefined) ? names : undefined
+}
+
 export const parseDelimitedList = (value: string): string[] =>
   value
     .split(/[\n,]/)
@@ -132,10 +259,20 @@ export const discoverChecks = ({
     for (const [jobId, job] of terminalJobs(jobs)) {
       const jobName = valueFor(job, 'name')
       if (typeof jobName === 'string' && jobName.includes('${{')) {
-        throw new Error(
-          `Cannot derive the required check for ${path}'s ${jobId} job because its name is dynamic. ` +
-            'Give the job a static name or exclude the workflow.',
-        )
+        const checkNames = resolveMatrixName(jobName, job)
+        if (checkNames === undefined) {
+          throw new Error(
+            `Cannot derive the required check for ${path}'s ${jobId} job because its name is dynamic. ` +
+              'Use only literal matrix values in its name, give the job a static name, or exclude the workflow.',
+          )
+        }
+
+        checkNames.forEach(checkName => {
+          if (!ignored.has(checkName)) {
+            expectedChecks.add(checkName)
+          }
+        })
+        continue
       }
 
       const checkName = typeof jobName === 'string' && jobName.length > 0 ? jobName : jobId

@@ -161,6 +161,73 @@ jobs:
     expect(result.workflows).toEqual(['.github/workflows/checks.yml'])
   })
 
+  it('expands job names that use literal matrix values', () => {
+    const result = discoverChecks({
+      files: [
+        workflow(
+          '.github/workflows/ci.yml',
+          `on: pull_request
+jobs:
+  unit-tests:
+    name: Unit Tests - \${{ matrix.platform }}
+    runs-on: \${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: Linux
+          - runner: macos-latest
+            platform: macOS
+          - runner: windows-latest
+            platform: Windows
+`,
+        ),
+      ],
+    })
+
+    expect(result).toEqual({
+      checks: ['Unit Tests - Linux', 'Unit Tests - Windows', 'Unit Tests - macOS'],
+      workflows: ['.github/workflows/ci.yml'],
+    })
+  })
+
+  it('expands literal matrix dimensions, exclusions, and additions', () => {
+    const result = discoverChecks({
+      files: [
+        workflow(
+          '.github/workflows/test.yml',
+          `on: pull_request
+jobs:
+  test:
+    name: Test (\${{ matrix.os }}, Node \${{ matrix.node.version }})
+    runs-on: \${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node:
+          - version: 22
+          - version: 24
+        exclude:
+          - os: macos-latest
+            node:
+              version: 22
+        include:
+          - os: windows-latest
+            node:
+              version: 24
+`,
+        ),
+      ],
+    })
+
+    expect(result.checks).toEqual([
+      'Test (macos-latest, Node 24)',
+      'Test (ubuntu-latest, Node 22)',
+      'Test (ubuntu-latest, Node 24)',
+      'Test (windows-latest, Node 24)',
+    ])
+  })
+
   it('fails instead of guessing a dynamic job name', () => {
     expect(() =>
       discoverChecks({
