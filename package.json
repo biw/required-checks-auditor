@@ -1,6 +1,6 @@
 {
   "name": "required-checks-auditor",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Audit GitHub PR workflows and fail when their checks are missing from branch rules.",
   "keywords": [
     "branch-protection",
