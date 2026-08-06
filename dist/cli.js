@@ -8462,6 +8462,70 @@ const terminalJobs = (jobs) => {
 	}));
 	return Object.entries(jobs).filter(([jobId]) => !prerequisites.has(jobId));
 };
+const isStaticValue = (value) => {
+	if (typeof value === "string") return !value.includes("${{");
+	if (Array.isArray(value)) return value.every(isStaticValue);
+	if (isRecord$1(value)) return Object.values(value).every(isStaticValue);
+	return value === null || ["boolean", "number"].includes(typeof value);
+};
+const valuesEqual = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+const rowMatches = (row, values) => Object.entries(values).every(([key, value]) => Object.hasOwn(row, key) && valuesEqual(row[key], value));
+const combinationsFor = (dimensions) => dimensions.reduce((rows, [key, values]) => rows.flatMap((row) => values.map((value) => ({
+	...row,
+	[key]: value
+}))), [{}]);
+const matrixRowsFor = (job) => {
+	const strategy = valueFor$1(job, "strategy");
+	const matrix = valueFor$1(strategy, "matrix");
+	if (!isRecord$1(matrix) || !isStaticValue(matrix)) return;
+	const dimensions = Object.entries(matrix).flatMap(([key, value]) => key === "include" || key === "exclude" ? [] : [[key, asArray(value)]]);
+	const initialRows = dimensions.length === 0 ? [] : combinationsFor(dimensions);
+	const exclusions = valueFor$1(matrix, "exclude");
+	if (exclusions !== void 0 && (!Array.isArray(exclusions) || !exclusions.every(isRecord$1))) return;
+	const originalRows = initialRows.filter((row) => !(exclusions ?? []).some((exclusion) => rowMatches(row, exclusion)));
+	const rows = originalRows.map((row) => ({ ...row }));
+	const inclusions = valueFor$1(matrix, "include");
+	if (inclusions === void 0) return rows;
+	if (!Array.isArray(inclusions) || !inclusions.every(isRecord$1)) return;
+	for (const inclusionValue of inclusions) {
+		const inclusion = inclusionValue;
+		const matchingRows = originalRows.map((row, index) => ({
+			index,
+			row
+		})).filter(({ row }) => Object.entries(inclusion).every(([key, value]) => !Object.hasOwn(row, key) || valuesEqual(row[key], value)));
+		if (matchingRows.length === 0) {
+			rows.push({ ...inclusion });
+			continue;
+		}
+		matchingRows.forEach(({ index }) => {
+			const row = rows[index];
+			if (row !== void 0) Object.assign(row, inclusion);
+		});
+	}
+	return rows;
+};
+const valueAtPath = (value, path) => path.reduce((current, key) => valueFor$1(current, key), value);
+const resolveMatrixName = (name, job) => {
+	const rows = matrixRowsFor(job);
+	if (rows === void 0) return;
+	const expressions = [...name.matchAll(/\$\{\{\s*matrix\.([A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*)\s*\}\}/g)];
+	if (expressions.length === 0) return;
+	if (name.replace(/\$\{\{\s*matrix\.([A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*)\s*\}\}/g, "").includes("${{")) return;
+	const names = rows.map((row) => {
+		let resolvedName = name;
+		for (const expression of expressions) {
+			const matchedPath = expression[1];
+			const wholeExpression = expression[0];
+			if (matchedPath === void 0 || wholeExpression === void 0) return;
+			const path = matchedPath.split(".");
+			const value = valueAtPath(row, path);
+			if (value === void 0 || typeof value === "object") return;
+			resolvedName = resolvedName.replace(wholeExpression, String(value));
+		}
+		return resolvedName;
+	});
+	return names.every((name) => name !== void 0) ? names : void 0;
+};
 const parseDelimitedList = (value) => value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
 const discoverChecks = ({ files, excludedWorkflowPaths = [], ignoredChecks = [] }) => {
 	const exclusions = new Set(excludedWorkflowPaths);
@@ -8483,7 +8547,14 @@ const discoverChecks = ({ files, excludedWorkflowPaths = [], ignoredChecks = [] 
 		if (!isRecord$1(jobs)) continue;
 		for (const [jobId, job] of terminalJobs(jobs)) {
 			const jobName = valueFor$1(job, "name");
-			if (typeof jobName === "string" && jobName.includes("${{")) throw new Error(`Cannot derive the required check for ${path}'s ${jobId} job because its name is dynamic. Give the job a static name or exclude the workflow.`);
+			if (typeof jobName === "string" && jobName.includes("${{")) {
+				const checkNames = resolveMatrixName(jobName, job);
+				if (checkNames === void 0) throw new Error(`Cannot derive the required check for ${path}'s ${jobId} job because its name is dynamic. Use only literal matrix values in its name, give the job a static name, or exclude the workflow.`);
+				checkNames.forEach((checkName) => {
+					if (!ignored.has(checkName)) expectedChecks.add(checkName);
+				});
+				continue;
+			}
 			const checkName = typeof jobName === "string" && jobName.length > 0 ? jobName : jobId;
 			if (!ignored.has(checkName)) expectedChecks.add(checkName);
 		}

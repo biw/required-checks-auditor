@@ -86,6 +86,9 @@ and the effective branch rules.
 ### What the audit discovers
 
 - GitHub Actions checks in eligible workflows, plus external checks observed on the pull request.
+- Job names that interpolate literal `strategy.matrix` values are expanded into their concrete check
+  names. Expressions that depend on any other context still need a static job name or a workflow
+  exclusion.
 - Workflows that can run only after a pull request closes or through manual dispatch are ignored.
 
 If no active ruleset applies to the target branch and checks are missing, the failed run includes a
