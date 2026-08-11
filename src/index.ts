@@ -50,7 +50,7 @@ const addSummary = async ({
 }
 
 const run = async (): Promise<void> => {
-  const waitSeconds = parseWaitSeconds(core.getInput('wait-seconds') || '30')
+  const waitSeconds = parseWaitSeconds(core.getInput('wait-seconds') || '10')
   if (waitSeconds > 0) {
     core.info(`Waiting ${waitSeconds} seconds before auditing required checks.`)
     await waitForSeconds(waitSeconds)

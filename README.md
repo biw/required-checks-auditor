@@ -44,7 +44,7 @@ jobs:
         uses: biw/required-checks-auditor@v1.0.4
         with:
           target-branch: main
-          wait-seconds: 30
+          wait-seconds: 10
           excluded-workflow-paths: |
             .github/workflows/release-build.yml
             .github/workflows/release-publish.yml
@@ -70,7 +70,7 @@ and the effective branch rules.
 
 ### Options
 
-- `wait-seconds`: seconds to wait before auditing; defaults to `30`. Set `0` to run immediately.
+- `wait-seconds`: seconds to wait before auditing; defaults to `10`. Set `0` to run immediately.
 - `target-branch`: protected branch whose active rules are audited. It defaults to the pull request's
   base branch; set it explicitly when the workflow can run on stacked pull requests.
 - `excluded-workflow-paths`: workflow files to leave out of automatic discovery when you

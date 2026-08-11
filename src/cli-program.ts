@@ -140,7 +140,7 @@ export const createAuditWorkflow = ({
   excludedWorkflowPaths,
   ignoredChecks = [],
   targetBranch,
-  waitSeconds = 30,
+  waitSeconds = 10,
 }: AuditWorkflowOptions): string => {
   const exclusions =
     excludedWorkflowPaths.length === 0
@@ -198,7 +198,7 @@ export const runCli = async ({
   const waitSeconds = Number(
     (
       await prompts.input({
-        default: '30',
+        default: '10',
         message: 'How long would you like to wait before running this check? (in seconds)',
         validate: validWaitSeconds,
       })
