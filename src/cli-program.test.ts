@@ -68,14 +68,14 @@ describe('createAuditWorkflow', () => {
         targetBranch: 'trunk',
         waitSeconds: 45,
       }),
-    ).toContain(`id: audit\n        uses: biw/required-checks-auditor@v1.0.4\n        with:\n          target-branch: trunk\n          wait-seconds: 45`)
+    ).toContain(`id: audit\n        uses: biw/required-checks-auditor@v1.0.5\n        with:\n          target-branch: trunk\n          wait-seconds: 45`)
     expect(
       createAuditWorkflow({
         excludedWorkflowPaths: [],
         targetBranch: 'trunk',
         waitSeconds: 45,
       }),
-    ).toContain('uses: biw/required-checks-auditor@v1.0.4')
+    ).toContain('uses: biw/required-checks-auditor@v1.0.5')
     expect(
       createAuditWorkflow({
         excludedWorkflowPaths: [],
@@ -92,7 +92,7 @@ describe('createAuditWorkflow', () => {
       auditInputsFromWorkflow(`jobs:
   audit:
     steps:
-      - uses: biw/required-checks-auditor@v1.0.4
+      - uses: biw/required-checks-auditor@v1.0.5
         with:
           excluded-workflow-paths: |
             .github/workflows/release-build.yml
@@ -135,7 +135,7 @@ describe('runCli', () => {
       input: async options => {
         if (options.message.startsWith('How long')) {
           expect(options).toMatchObject({
-            default: '30',
+            default: '10',
             message: 'How long would you like to wait before running this check? (in seconds)',
           })
           return '45'
@@ -170,7 +170,7 @@ describe('runCli', () => {
     const prompts: CliPrompts = {
       checkbox: async () => ['.github/workflows/ci.yml'],
       confirm: async () => false,
-      input: async options => (options.message.startsWith('How long') ? '30' : 'main'),
+      input: async options => (options.message.startsWith('How long') ? '10' : 'main'),
     }
 
     const result = await runCli({ cwd, log: () => {}, prompts })
@@ -188,7 +188,7 @@ describe('runCli', () => {
       `jobs:
   required-checks-auditor:
     steps:
-      - uses: biw/required-checks-auditor@v1.0.4
+      - uses: biw/required-checks-auditor@v1.0.5
         with:
           excluded-workflow-paths: |
             .github/workflows/performance.yml
@@ -212,7 +212,7 @@ describe('runCli', () => {
         })
         return true
       },
-      input: async options => (options.message.startsWith('How long') ? '30' : 'main'),
+      input: async options => (options.message.startsWith('How long') ? '10' : 'main'),
     }
 
     await runCli({ cwd, log: () => {}, prompts })
@@ -237,7 +237,7 @@ describe('runCli', () => {
     const prompts: CliPrompts = {
       checkbox: async () => ['.github/workflows/ci.yml'],
       confirm: async () => false,
-      input: async options => (options.message.startsWith('How long') ? '30' : 'main'),
+      input: async options => (options.message.startsWith('How long') ? '10' : 'main'),
     }
 
     await runCli({ cwd, log: message => logs.push(message), prompts })
@@ -251,7 +251,7 @@ describe('runCli', () => {
     const workflow = createAuditWorkflow({
       excludedWorkflowPaths: [],
       targetBranch: 'main',
-      waitSeconds: 30,
+      waitSeconds: 10,
     })
     await writeFile(join(cwd, '.github', 'workflows', 'required-checks-auditor.yml'), workflow)
     const prompts: CliPrompts = {
@@ -259,7 +259,7 @@ describe('runCli', () => {
       confirm: async () => {
         throw new Error('The overwrite prompt should not be shown.')
       },
-      input: async options => (options.message.startsWith('How long') ? '30' : 'main'),
+      input: async options => (options.message.startsWith('How long') ? '10' : 'main'),
     }
 
     const result = await runCli({ cwd, log: () => {}, prompts })

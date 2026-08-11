@@ -23,7 +23,7 @@ jobs:
         uses: ./
         with:
           target-branch: main
-          wait-seconds: 30
+          wait-seconds: 10
       - name: Upload starter ruleset
         if: ${{ failure() && steps.audit.outputs['ruleset-artifact-path'] != '' }}
         uses: actions/upload-artifact@v4

@@ -21,7 +21,7 @@ inputs:
   wait-seconds:
     description: Non-negative whole seconds to wait before auditing. This gives late-starting checks time to appear.
     required: false
-    default: '30'
+    default: '10'
   excluded-workflow-paths:
     description: Comma- or newline-separated workflow paths to exclude from discovery.
     required: false

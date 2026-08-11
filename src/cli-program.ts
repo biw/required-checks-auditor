@@ -7,7 +7,7 @@ import { discoverChecks, parseDelimitedList } from './discovery.js'
 import { formatLineDiff } from './line-diff.js'
 import { readLocalWorkflowFiles } from './local-workflows.js'
 
-const defaultActionRef = 'biw/required-checks-auditor@v1.0.4'
+const defaultActionRef = 'biw/required-checks-auditor@v1.0.5'
 const generatedWorkflowPath = '.github/workflows/required-checks-auditor.yml'
 
 interface CheckboxChoice {
@@ -140,7 +140,7 @@ export const createAuditWorkflow = ({
   excludedWorkflowPaths,
   ignoredChecks = [],
   targetBranch,
-  waitSeconds = 30,
+  waitSeconds = 10,
 }: AuditWorkflowOptions): string => {
   const exclusions =
     excludedWorkflowPaths.length === 0
@@ -198,7 +198,7 @@ export const runCli = async ({
   const waitSeconds = Number(
     (
       await prompts.input({
-        default: '30',
+        default: '10',
         message: 'How long would you like to wait before running this check? (in seconds)',
         validate: validWaitSeconds,
       })

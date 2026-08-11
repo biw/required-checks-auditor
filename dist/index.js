@@ -26795,7 +26795,7 @@ const addSummary = async ({ checks, missing, observedChecks, targetHasRuleset, t
 	await summary.addHeading(`Required checks audit for ${targetBranch}`).addTable(rows).addHeading("Ruleset", 2).addList([targetHasRuleset ? "An active ruleset applies to this branch." : "No active ruleset applies to this branch."]).addHeading("Discovered workflows", 2).addList(workflows).addHeading("Observed external checks", 2).addList(observedChecks.length === 0 ? ["None"] : observedChecks).write();
 };
 const run = async () => {
-	const waitSeconds = parseWaitSeconds(getInput("wait-seconds") || "30");
+	const waitSeconds = parseWaitSeconds(getInput("wait-seconds") || "10");
 	if (waitSeconds > 0) {
 		info(`Waiting ${waitSeconds} seconds before auditing required checks.`);
 		await waitForSeconds(waitSeconds);
