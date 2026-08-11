@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: audit
-        uses: biw/required-checks-auditor@v1.0.4
+        uses: biw/required-checks-auditor@v1.0.5
         with:
           target-branch: main
           wait-seconds: 10

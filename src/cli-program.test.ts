@@ -68,14 +68,14 @@ describe('createAuditWorkflow', () => {
         targetBranch: 'trunk',
         waitSeconds: 45,
       }),
-    ).toContain(`id: audit\n        uses: biw/required-checks-auditor@v1.0.4\n        with:\n          target-branch: trunk\n          wait-seconds: 45`)
+    ).toContain(`id: audit\n        uses: biw/required-checks-auditor@v1.0.5\n        with:\n          target-branch: trunk\n          wait-seconds: 45`)
     expect(
       createAuditWorkflow({
         excludedWorkflowPaths: [],
         targetBranch: 'trunk',
         waitSeconds: 45,
       }),
-    ).toContain('uses: biw/required-checks-auditor@v1.0.4')
+    ).toContain('uses: biw/required-checks-auditor@v1.0.5')
     expect(
       createAuditWorkflow({
         excludedWorkflowPaths: [],
@@ -92,7 +92,7 @@ describe('createAuditWorkflow', () => {
       auditInputsFromWorkflow(`jobs:
   audit:
     steps:
-      - uses: biw/required-checks-auditor@v1.0.4
+      - uses: biw/required-checks-auditor@v1.0.5
         with:
           excluded-workflow-paths: |
             .github/workflows/release-build.yml
@@ -188,7 +188,7 @@ describe('runCli', () => {
       `jobs:
   required-checks-auditor:
     steps:
-      - uses: biw/required-checks-auditor@v1.0.4
+      - uses: biw/required-checks-auditor@v1.0.5
         with:
           excluded-workflow-paths: |
             .github/workflows/performance.yml
