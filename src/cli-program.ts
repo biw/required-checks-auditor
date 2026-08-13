@@ -7,7 +7,7 @@ import { discoverChecks, parseDelimitedList } from './discovery.js'
 import { formatLineDiff } from './line-diff.js'
 import { readLocalWorkflowFiles } from './local-workflows.js'
 
-const defaultActionRef = 'biw/required-checks-auditor@v1.0.5'
+const defaultActionRef = 'biw/required-checks-auditor@v1.0.6'
 const generatedWorkflowPath = '.github/workflows/required-checks-auditor.yml'
 
 interface CheckboxChoice {
