@@ -8629,7 +8629,7 @@ const readLocalWorkflowFiles = async (cwd) => {
 };
 //#endregion
 //#region src/cli-program.ts
-const defaultActionRef = "biw/required-checks-auditor@v1.0.5";
+const defaultActionRef = "biw/required-checks-auditor@v1.0.6";
 const generatedWorkflowPath = ".github/workflows/required-checks-auditor.yml";
 const defaultPrompts = {
 	checkbox: (options) => dist_default$2(options),
